@@ -1,0 +1,11 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "database": "${workspaceFolder:compramos}/db.sqlite3",
+            "name": "compramos-db",
+            "group": "compramos"
+        }
+    ]
+}
