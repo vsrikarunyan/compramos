@@ -8,6 +8,14 @@ DELETE FROM django_content_type WHERE app_label='shopping_list';
 */
 
 
-DELETE FROM django_migrations WHERE app='shopping_list';
+-- DELETE FROM django_migrations WHERE app='shopping_list';
 
-DROP TABLE shopping_list_shoppinglist;
+-- IMPORTANT --
+-- NEVER run the query using the Run Menu; always use the Command Pallate (Ctrl+Shift+P) and select "SQLTools: Run Query"
+-- IMPORTANT --
+
+SELECT * FROM shopping_list_shoppinglist_members;
+
+SELECT * FROM shopping_list_shoppinglist;
+
+SELECT * FROM auth_user;
