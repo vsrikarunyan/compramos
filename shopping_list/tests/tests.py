@@ -93,8 +93,43 @@ def test_shopping_list_includes_only_corresponding_items(create_user, create_aut
     response = client.get(url)
 
     assert response.status_code == status.HTTP_200_OK
-    assert len(response.data['shopping_items']) == 1
-    assert response.data['shopping_items'][0]['name'] == 'Eggs'
+    assert len(response.data['unpurchased_items']) == 1
+    assert response.data['unpurchased_items'][0]['name'] == 'Eggs'
+
+
+@pytest.mark.django_db
+def test_max_3_shopping_items_on_shopping_list(create_user, create_authenticated_client, create_shopping_list, create_shopping_item):
+    user = create_user()
+    client = create_authenticated_client(user)
+
+    shopping_list = create_shopping_list(name='Groceries', user=user)
+
+    create_shopping_item(name='Eggs', user=user, shopping_list=shopping_list)
+    create_shopping_item(name='Milk', user=user, shopping_list=shopping_list)
+    create_shopping_item(name='Bread', user=user, shopping_list=shopping_list)
+    create_shopping_item(name='Butter', user=user, shopping_list=shopping_list)
+
+    url = reverse('shopping-list-detail', args=[shopping_list.id])
+    response = client.get(url, format='json')
+
+    assert len(response.data['unpurchased_items']) == 3
+
+@pytest.mark.django_db
+def test_all_shopping_items_on_shopping_list_unpurchased(create_user, create_authenticated_client, create_shopping_list, create_shopping_item):
+    user = create_user()
+    client = create_authenticated_client(user)
+
+    shopping_list = create_shopping_list(name='Groceries', user=user)
+
+    create_shopping_item(name='Eggs', user=user, shopping_list=shopping_list)
+    create_shopping_item(name='Milk', user=user, shopping_list=shopping_list, purchased=True)
+    create_shopping_item(name='Bread', user=user, shopping_list=shopping_list)
+
+    url = reverse("shopping-list-detail", args=[shopping_list.id])
+
+    response = client.get(url, format="json")
+
+    assert len(response.data["unpurchased_items"]) == 2
 
 @pytest.mark.django_db
 def test_shopping_list_name_is_changed(create_user, create_authenticated_client, create_shopping_list):
@@ -245,7 +280,7 @@ def test_not_member_of_list_can_not_add_shopping_item(create_user, create_authen
     shopping_list_creator = User.objects.create_user("Creator", "creator@list.com", "something")
     shopping_list = create_shopping_list(name='Groceries', user=shopping_list_creator)
 
-    url = reverse("add-shopping-item", args=[shopping_list.id])
+    url = reverse("list-add-shopping-item", args=[shopping_list.id])
 
     data = {
         "name": "Milk",
@@ -261,7 +296,7 @@ def test_admin_can_add_shopping_items(create_user, create_shopping_list, admin_c
     user = create_user()
     shopping_list = create_shopping_list(name='Groceries', user=user)
 
-    url = reverse("add-shopping-item",  kwargs={"pk": shopping_list.id})
+    url = reverse("list-add-shopping-item",  kwargs={"pk": shopping_list.id})
 
     data = {
         "name": "Milk",
@@ -288,7 +323,7 @@ def test_retrieve_a_single_shopping_item(create_user, create_authenticated_clien
 def test_valid_shopping_item_is_created(create_user, create_authenticated_client, create_shopping_list):
     user = create_user()
     shopping_list = create_shopping_list(name='Groceries', user=user)
-    url = reverse('add-shopping-item', args=[shopping_list.id])
+    url = reverse('list-add-shopping-item', args=[shopping_list.id])
 
     data = {
         'name': 'Milk',
@@ -304,7 +339,7 @@ def test_valid_shopping_item_is_created(create_user, create_authenticated_client
 def test_create_shopping_item_missing_data_returns_bad_request(create_user, create_authenticated_client, create_shopping_list):
     user = create_user()
     shopping_list = create_shopping_list(name="Groceries", user=user)
-    url = reverse("add-shopping-item", args=[shopping_list.id])
+    url = reverse("list-add-shopping-item", args=[shopping_list.id])
 
     data = {
         "name": "Milk",
@@ -466,3 +501,72 @@ def test_admin_can_retrieve_single_shopping_item(create_user, create_shopping_it
     response = admin_client.get(url)
 
     assert response.status_code == status.HTTP_200_OK    
+
+@pytest.mark.django_db
+def test_list_shopping_items_is_retrieved_by_shopping_list_member(create_user, create_authenticated_client, create_shopping_list, create_shopping_item):
+    user = create_user()
+    shopping_list = create_shopping_list(name='Groceries', user=user)
+    shopping_item_1 = create_shopping_item(name='Milk', user=user, shopping_list=shopping_list)
+    shopping_item_2 = create_shopping_item(name='Bread', user=user, shopping_list=shopping_list)
+
+    client = create_authenticated_client(user)
+    url = reverse('list-add-shopping-item', kwargs={'pk': shopping_list.id})
+    response = client.get(url)
+
+    assert len(response.data) == 2
+    assert response.data[0]['name'] == shopping_item_1.name
+    assert response.data[1]['name'] == shopping_item_2.name
+
+
+@pytest.mark.django_db
+def test_not_member_can_not_retrieve_shopping_items(create_user, create_authenticated_client, create_shopping_item):
+    shopping_list_creator = User.objects.create_user("SomeoneElse", "someone@else.com", "something")
+    shopping_item = create_shopping_item("Milk", shopping_list_creator)
+
+    user = create_user()
+    client = create_authenticated_client(user)
+    url = reverse("list-add-shopping-item",  kwargs={"pk": shopping_item.shopping_list.id})
+
+    response = client.get(url)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_list_shopping_items_only_the_ones_belonging_to_the_same_shopping_list(create_user, create_authenticated_client, create_shopping_list, create_shopping_item):
+    user = create_user()
+
+    shopping_list = create_shopping_list(name='My shopping list', user=user)
+    shopping_item_from_this_list = create_shopping_item(name='Oranges', user=user, shopping_list=shopping_list)
+
+    another_shopping_list = create_shopping_list(name='Another list', user=user)
+    create_shopping_item(name='Item from another list', user=user, shopping_list=another_shopping_list)
+
+    client = create_authenticated_client(user)
+    url = reverse("list-add-shopping-item", kwargs={"pk": shopping_list.id})
+
+    response = client.get(url)
+
+    assert len(response.data) == 1
+    assert response.data[0]["name"] == shopping_item_from_this_list.name    
+
+@pytest.mark.django_db
+def test_duplicate_item_on_list_bad_request(create_user, create_authenticated_client, create_shopping_list, create_shopping_item):
+
+    user = create_user()
+    client = create_authenticated_client(user)
+
+    shopping_list = create_shopping_list(name='Groceries', user=user)
+    create_shopping_item(name="Milk", user=user, shopping_list=shopping_list)
+
+    url = reverse("list-add-shopping-item", args=[shopping_list.id])
+
+    data = {
+        "name": "Milk",
+        "purchased": False
+    }
+
+    response = client.post(url, data, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert len(shopping_list.shopping_items.all()) == 1    

@@ -9,14 +9,14 @@ from rest_framework.test import APIClient
 
 @pytest.fixture(scope='session')
 def create_shopping_item():
-    def _create_shopping_item(name, user, shopping_list=None):
+    def _create_shopping_item(name, user, shopping_list=None, purchased=False):
 
         if shopping_list is None:
             shopping_list = ShoppingList.objects.create(name='My shopping list')
             shopping_list.members.add(user)
             
 
-        shopping_item = ShoppingItem.objects.create(name=name, purchased=False, shopping_list=shopping_list)
+        shopping_item = ShoppingItem.objects.create(name=name, purchased=purchased, shopping_list=shopping_list)
 
         return shopping_item
     
