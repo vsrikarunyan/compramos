@@ -20,7 +20,7 @@ class ListAddShoppingList(generics.ListCreateAPIView):
         return shopping_list
     
     def get_queryset(self):
-        return ShoppingList.objects.filter(members=self.request.user)
+        return ShoppingList.objects.filter(members=self.request.user).order_by('-last_interaction')
 
 class ShoppingListDetail(generics.RetrieveUpdateDestroyAPIView):
     queryset = ShoppingList.objects.all()

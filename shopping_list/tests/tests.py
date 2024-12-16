@@ -1,5 +1,8 @@
 # shopping_list/tests/tests.py
 
+from datetime import datetime, timedelta
+from django.utils import timezone
+from unittest import mock
 import pytest
 import uuid
 from django.urls import reverse
@@ -63,8 +66,8 @@ def test_client_retrieves_only_shopping_lists_they_are_member_of(create_user, cr
 
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data) == 2
-    assert response.data[0]['name'] == 'Groceries'
-    assert response.data[1]['name'] == 'Books'    
+    assert response.data[0]['name'] in ('Groceries', 'Books')   # required to ensure that the order of the items is not important
+    assert response.data[1]['name'] in ('Groceries', 'Books')
 
 @pytest.mark.django_db
 def test_shopping_list_is_retrieved_by_id(create_user, create_authenticated_client, create_shopping_list):
@@ -570,3 +573,61 @@ def test_duplicate_item_on_list_bad_request(create_user, create_authenticated_cl
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert len(shopping_list.shopping_items.all()) == 1    
+
+@pytest.mark.django_db
+def test_correct_order_shopping_lists(create_user, create_authenticated_client):
+    url = reverse('all-shopping-lists')
+    user = create_user()
+    client = create_authenticated_client(user)
+
+    tz = timezone.get_current_timezone()
+    tz_datetime = timezone.make_aware(datetime.now(), tz)
+    old_time = tz_datetime - timedelta(days=1)
+    older_time = tz_datetime - timedelta(days=100)
+
+    with mock.patch('django.utils.timezone.now') as mock_now:
+        mock_now.return_value = old_time
+        ShoppingList.objects.create(name='Old').members.add(user)
+
+        mock_now.return_value = older_time
+        ShoppingList.objects.create(name='Oldest').members.add(user)
+
+    ShoppingList.objects.create(name='New').members.add(user)
+
+    response = client.get(url)
+
+    assert response.data[0]['name'] == 'New'
+    assert response.data[1]['name'] == 'Old'
+    assert response.data[2]['name'] == 'Oldest'
+
+@pytest.mark.django_db
+def test_shopping_lists_order_changed_when_item_marked_purchased(create_user, create_authenticated_client):
+
+    user = create_user()
+    client = create_authenticated_client(user)
+
+    more_recent_time = timezone.now() - timedelta(days=1)
+    older_time = timezone.now() - timedelta(days=20)
+
+    with mock.patch('django.utils.timezone.now') as mock_now:
+        mock_now.return_value = older_time
+        older_list = ShoppingList.objects.create(name='Older')
+        older_list.members.add(user)
+        shopping_item_on_older_list = ShoppingItem.objects.create(name='Milk', purchased=False, shopping_list=older_list)
+
+        mock_now.return_value = more_recent_time
+        ShoppingList.objects.create(name='Recent', last_interaction=timezone.now() - timedelta(days=100)).members.add(user)
+
+    shopping_item_url = reverse('shopping-item-detail', kwargs={'pk': older_list.id, 'item_pk': shopping_item_on_older_list.id})
+    shopping_list_url = reverse('all-shopping-lists')
+
+    data = {
+        'purchased': True
+    }
+
+    client.patch(shopping_item_url, data=data)
+
+    response = client.get(shopping_list_url)
+
+    assert response.data[1]['name'] == 'Recent'
+    assert response.data[0]['name'] == 'Older'
